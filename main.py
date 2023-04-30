@@ -49,7 +49,8 @@ def createGeoJSON():
 
 
 def findStationPositions():
-    path = "/home/maedekey/Bureau/geo/gtfs/stops.txt"
+    path = "C:/Users/maeva/Desktop/geo/gtfs/stops.txt"
+    #path = "/home/maedekey/Bureau/geo/gtfs/stops.txt"
     valuesSeen = set()
     positionsDict = {}
     with open(path, 'r') as f:
@@ -93,14 +94,15 @@ def locateTrain(speed, stations, distanceStations):
 
 class gtfsData:
     def __init__(self):
-        url = "file:////home/maedekey/Bureau/geo/1680202355.gtfsrt"
+        url = "file:///C:/Users/maeva/Desktop/geo/1680127355.gtfsrt"
+        #url = "file:////home/maedekey/Bureau/geo/1680202355.gtfsrt"
         gtfsDict = preprocessing(url)
 
         self.gtfsValues = list(gtfsDict.values())[1]
         self.positionsDict = findStationPositions()
 
-        self.findTrainLocation()
-        # self.visualizeTrains()
+        #self.findTrainLocation()
+        self.visualizeTrains()
 
     def findTrainLocation(self):
         stations = self.findStations()
