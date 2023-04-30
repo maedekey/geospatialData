@@ -8,7 +8,8 @@ from google.transit import gtfs_realtime_pb2
 import folium
 from google.protobuf.json_format import MessageToDict
 
-
+# todo: make a pin per trip
+# todo: segment railways on discord for better path
 # todo: add delays
 
 def preprocessing(url):
@@ -28,18 +29,32 @@ def addLocations(stopId, line, positionsDict):
 
 def retrieveCoordinates():
     coordinates = []
-    with open('travels.txt', 'r') as travels:
+    with open('sortedTravels.txt', 'r') as travels:
         for line in travels:
             longitude = float(line.split(',')[0])
             latitude = float(line.split(',')[1])
             epochTime = float(line.split(',')[2])
-            coordinates.append({"coordinates": [longitude, latitude],
+            coordinates.append({"coordinates": [latitude, longitude],
                                 "time": datetime.fromtimestamp(float(epochTime)).isoformat() + "Z"})
     return coordinates
 
 
+def sortLines():
+    # Open the input and output files
+    with open('unsortedTravels.txt', 'r') as f_input, open('sortedTravels.txt', 'w') as f_output:
+        # Read the lines from the input file
+        lines = f_input.readlines()
+
+        # Sort the lines based on the last parameter
+        sorted_lines = sorted(lines, key=lambda line: int(line.split(',')[-1]))
+
+        # Write the sorted lines to the output file
+        f_output.writelines(sorted_lines)
+
+
 def createGeoJSON():
     coordinates = retrieveCoordinates()
+    print(coordinates)
     # Create a GeoJSON FeatureCollection with a LineString feature
     feature_collection = {
         "type": "FeatureCollection",
@@ -139,7 +154,7 @@ class gtfsData:
             stations = self.findStations(i)
 
             if len(stations) == 1 and [stations[0][1], stations[0][2]] != previousPosition:
-                with open('travels.txt', 'a') as travels:
+                with open('unsortedTravels.txt', 'a+') as travels:
                     travels.write(f"{stations[0][1]},{stations[0][2]},{i}\n")
                     travels.close()
                 previousPosition = [stations[0][1], stations[0][2]]
@@ -147,10 +162,11 @@ class gtfsData:
             elif len(stations) > 1:
                 distanceStations = calculateDistance(stations)
                 speed = calculateAverageSpeed(stations, distanceStations)
-                with open('travels.txt', 'a') as travels:
+                with open('unsortedTravels.txt', 'a+') as travels:
                     travels.write(f"{stations[0][1]},{stations[0][2]},{i}\n")
                     travels.close()
                 previousPosition = [locateTrain(speed, stations, distanceStations, i)]
+        sortLines()
 
     def findStations(self, currentTime):
         stops = self.gtfsValues[5]['tripUpdate']['stopTimeUpdate']
