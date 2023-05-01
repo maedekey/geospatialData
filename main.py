@@ -9,6 +9,10 @@ import folium
 from google.protobuf.json_format import MessageToDict
 
 
+# todo: make a pin per train
+# todo: segment railways on discord for better path
+# todo: add delays
+
 def preprocessing(url):
     gtfs_realtime = gtfs_realtime_pb2.FeedMessage()
     gtfs_realtime.ParseFromString(urlopen(url).read())
@@ -24,14 +28,47 @@ def addLocations(stopId, line, positionsDict):
     positionsDict[stopId] = [location, longitude, lattitude]
 
 
+def retrieveCoordinates():
+    coordinates = []
+    with open('sortedTravels.txt', 'r') as travels:
+        for i, line in enumerate(travels):
+            if i > 0:
+                longitude = float(line.split(',')[0])
+                latitude = float(line.split(',')[1])
+                epochTime = float(line.split(',')[2])
+                coordinates.append({"coordinates": [latitude, longitude],
+                                    "time": datetime.fromtimestamp(float(epochTime)).isoformat() + "Z"})
+        return coordinates
+
+
+def sortLines():
+    with open('unsortedTravels.txt', 'r') as f_input:
+        lines = f_input.readlines()
+        lines = [line.strip().split(',') for line in lines]  # split each line into a list of values
+
+        sortedLines = sorted(lines, key=lambda line: int(line[-1]))  # sort the lines based on the epoch value
+
+        uniqueLines = []  # create an empty list to store the unique lines
+        prevLine = None  # initialize prevLine variable to None
+        for line in sortedLines:
+            if line != prevLine:  # check if the line is different from the previous line
+                uniqueLines.append(line)  # add the line to the uniqueLines list
+                prevLine = line  # set the prevLine variable to the current line
+
+    return uniqueLines
+
+
+def writeSortedTravels():
+    uniqueLines = sortLines()
+    with open('sortedTravels.txt', 'a+') as f_output:
+        for line in uniqueLines:
+            f_output.write(','.join(line) + '\n')
+
+
 def createGeoJSON():
-    coordinates = [
-        {"coordinates": [-122.4194, 37.7749], "time": "2023-04-30T12:00:00Z"},
-        {"coordinates": [-122.4195, 37.7748], "time": "2023-04-30T12:01:00Z"},
-        {"coordinates": [-122.4196, 37.7747], "time": "2023-04-30T12:02:00Z"},
-        # Add more coordinates with timestamps here
-    ]
-    # Create a GeoJSON FeatureCollection with a LineString feature
+    coordinates = retrieveCoordinates()
+    print(coordinates)
+
     feature_collection = {
         "type": "FeatureCollection",
         "features": [{
@@ -50,7 +87,8 @@ def createGeoJSON():
 
 def findStationPositions():
     path = "C:/Users/maeva/Desktop/geo/gtfs/stops.txt"
-    #path = "/home/maedekey/Bureau/geo/gtfs/stops.txt"
+    # path = "/home/maedekey/Bureau/geo/gtfs/stops.txt"
+
     valuesSeen = set()
     positionsDict = {}
     with open(path, 'r') as f:
@@ -75,72 +113,114 @@ def calculateDistance(stations):
 
 
 def calculateAverageSpeed(stations, distance):
+    if len(stations) < 2:
+        return 0
     travelTime = int(stations[3]) - int(stations[2])
-    averageSpeed = distance/travelTime
+    averageSpeed = distance / travelTime
     return averageSpeed
 
 
-def locateTrain(speed, stations, distanceStations):
-    print(stations)
-    currentTime = 1680193500
+def locateTrain(speed, stations, distanceStations, currentTime):
     time = currentTime - int(stations[2])
     trainDistance = speed * time
     ratio = trainDistance / distanceStations
 
     longitude = float(stations[0][1]) + (float(stations[1][1]) - float(stations[0][1])) * ratio
     latitude = float(stations[0][2]) + (float(stations[1][2]) - float(stations[0][2])) * ratio
-    print(longitude, latitude)
+    return [longitude, latitude]
+
+
+def visualizeTrains():
+    belgium_coords = [51.17147, 4.142963]
+    m = folium.Map(location=belgium_coords, zoom_start=8)
+
+    feature_collection = createGeoJSON()
+
+    # Add the GeoJSON data to the map
+    TimestampedGeoJson(
+        json.dumps(feature_collection),
+        period="PT1S",  # update frequency in seconds
+        add_last_point=True,  # add a marker at the last point of the trajectory
+        auto_play=True,  # autoplay the animation
+        loop=True,  # loop the animation
+    ).add_to(m)
+
+    # Show the map in PyCharm
+    m.save("map.html")
+    webbrowser.open('map.html')
+
+
+def writeStaticObjectCoordinates(i, previousPosition, stations):
+    distanceStations = calculateDistance(stations)
+    speed = calculateAverageSpeed(stations, distanceStations)
+    previousPosition = [locateTrain(speed, stations, distanceStations, i)]
+    with open('unsortedTravels.txt', 'a+') as travels:
+        travels.write(f"{previousPosition[0][0]},{previousPosition[0][1]},{i}\n")
+        travels.close()
+    return previousPosition
+
+
+def writeMovingobjectCoordinates(i, previousPosition, stations):
+    with open('unsortedTravels.txt', 'a+') as travels:
+        travels.write(f"{stations[0][1]},{stations[0][2]},{i}\n")
+        travels.close()
+    previousPosition = [stations[0][1], stations[0][2]]
+    return previousPosition
 
 
 class gtfsData:
     def __init__(self):
         url = "file:///C:/Users/maeva/Desktop/geo/1680127355.gtfsrt"
-        #url = "file:////home/maedekey/Bureau/geo/1680202355.gtfsrt"
+        # url = "file:////home/maedekey/Bureau/geo/1680202355.gtfsrt"
+
         gtfsDict = preprocessing(url)
 
         self.gtfsValues = list(gtfsDict.values())[1]
         self.positionsDict = findStationPositions()
 
-        #self.findTrainLocation()
-        self.visualizeTrains()
+
+        self.findTrainLocation()
+        visualizeTrains()
+
 
     def findTrainLocation(self):
-        stations = self.findStations()
-        distanceStations = calculateDistance(stations)
-        speed = calculateAverageSpeed(stations, distanceStations)
-        locateTrain(speed, stations, distanceStations)
+        startTime = self.findStartTime()
+        endTime = self.gtfsValues[5]['tripUpdate']['stopTimeUpdate'][-1]['arrival']['time']
+        previousPosition = None
+        previousTripId = None
+        for i in range(startTime, int(endTime), 60):
+            stations, previousTripId = self.findStations(i, previousTripId)
 
-    def findStations(self):
+            if len(stations) == 1 and [stations[0][1], stations[0][2]] != previousPosition:
+                previousPosition = writeMovingobjectCoordinates(i, previousPosition, stations)
 
-        currentTime = 1680193500
+            elif len(stations) > 1:
+                previousPosition = writeStaticObjectCoordinates(i, previousPosition, stations)
+
+        writeSortedTravels()
+
+    def findStations(self, currentTime, previousTripId):
         stops = self.gtfsValues[5]['tripUpdate']['stopTimeUpdate']
         for i in range(len(stops) - 1):
+            if self.gtfsValues[5]['tripUpdate']['trip']['tripId'] != previousTripId:
+                previousTripId = self.gtfsValues[5]['tripUpdate']['trip']['tripId']
 
             if int(stops[i]['departure']['time']) < currentTime < int(stops[i + 1]['arrival']['time']):
                 return [self.positionsDict[stops[i]['stopId']], self.positionsDict[stops[i + 1]['stopId']],
-                        stops[i]['departure']['time'], stops[i + 1]['arrival']['time']]
+                        stops[i]['departure']['time'], stops[i + 1]['arrival']['time']], previousTripId
+
             elif i < len(stops) - 2:
                 if int(stops[i + 1]['departure']['time']) >= currentTime >= int(stops[i + 1]['arrival']['time']):
-                    return [self.positionsDict[stops[i + 1]['stopId']]]
-        return []
+                    return [self.positionsDict[stops[i + 1]['stopId']]], previousTripId
+            else:
+                return [self.positionsDict[stops[i + 1]['stopId']]], previousTripId
 
-    def visualizeTrains(self):
-        m = folium.Map(location=[37.7749, -122.4194], zoom_start=14)
-
-        feature_collection = createGeoJSON()
-
-        # Add the GeoJSON data to the map
-        TimestampedGeoJson(
-            json.dumps(feature_collection),
-            period="PT1S",  # update frequency in seconds
-            add_last_point=True,  # add a marker at the last point of the trajectory
-            auto_play=True,  # autoplay the animation
-            loop=True,  # loop the animation
-        ).add_to(m)
-
-        # Show the map in PyCharm
-        m.save("map.html")
-        webbrowser.open('map.html')
+    def findStartTime(self):
+        startTime = self.gtfsValues[5]['tripUpdate']['trip']['startTime']
+        startDate = self.gtfsValues[5]['tripUpdate']['trip']['startDate']
+        startDateTime = datetime.strptime(startDate + startTime, '%Y%m%d%H:%M:%S')
+        epochTime = int(startDateTime.timestamp())
+        return epochTime
 
     def visualizeStations(self):
         belgium_coords = [50.5039, 4.4699]
