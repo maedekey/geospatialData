@@ -88,6 +88,7 @@ def createGeoJSON():
 def findStationPositions():
     path = "C:/Users/maeva/Desktop/geo/gtfs/stops.txt"
     # path = "/home/maedekey/Bureau/geo/gtfs/stops.txt"
+
     valuesSeen = set()
     positionsDict = {}
     with open(path, 'r') as f:
@@ -171,13 +172,16 @@ class gtfsData:
     def __init__(self):
         url = "file:///C:/Users/maeva/Desktop/geo/1680127355.gtfsrt"
         # url = "file:////home/maedekey/Bureau/geo/1680202355.gtfsrt"
+
         gtfsDict = preprocessing(url)
 
         self.gtfsValues = list(gtfsDict.values())[1]
         self.positionsDict = findStationPositions()
 
+
         self.findTrainLocation()
         visualizeTrains()
+
 
     def findTrainLocation(self):
         startTime = self.findStartTime()
