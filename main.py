@@ -9,8 +9,9 @@ import folium
 from google.protobuf.json_format import MessageToDict
 
 
+# todo: try and make the whole gtfsrt file work with this visualization
 # todo: make a pin per train
-# todo: segment railways on discord for better path
+# todo: better path
 # todo: add delays
 # todo: parametrize paths of gtfs directory and gtfsrt file
 
@@ -46,55 +47,30 @@ def addLocations(stopId, line, positionsDict):
 
 def retrieveCoordinates():
     """
-    Function that allows retrieving coordinates from the sortedTravels.txt file and add it into a
+    Function that allows retrieving coordinates from the travels.txt file and add it into a
     coordinate object, used to create a json object
     :return: the coordinate object
     """
+    previousTripId = '0\n'
+    coordinatesSet = []
     coordinates = []
-    with open('sortedTravels.txt', 'r') as travels:
+    index = 0
+    with open('travels.txt', 'r') as travels:
         for i, line in enumerate(travels):
-            if i > 0:
-                longitude = float(line.split(',')[0])
-                latitude = float(line.split(',')[1])
-                epochTime = float(line.split(',')[2])
-                coordinates.append({"coordinates": [latitude, longitude],
-                                    "time": datetime.fromtimestamp(float(epochTime)).isoformat() + "Z"})
-        return coordinates
-
-
-def sortLines():
-    """
-    Function that allows storing the files lines into a list. Then, this list is sorted based on the
-    time (epoch format), and all the consecutive duplicates are deleted.
-    What we call consecutive duplicates is: at different moments, the object has same longitude and
-    same latitude
-    :return: sorted list without consecutive duplicates
-    """
-    with open('unsortedTravels.txt', 'r') as f_input:
-        lines = f_input.readlines()
-        lines = [line.strip().split(',') for line in lines]
-
-        sortedLines = sorted(lines, key=lambda line: int(line[-1]))
-
-        # delete all consecutive duplicates
-        uniqueLines = []
-        prevLine = None
-        for line in sortedLines:
-            if line != prevLine:
-                uniqueLines.append(line)
-                prevLine = line
-
-    return uniqueLines
-
-
-def writeSortedTravels():
-    """
-    Function that writes in a "storedTravels.txt" all the sorted and non duplicated lines of the trip
-    """
-    uniqueLines = sortLines()
-    with open('sortedTravels.txt', 'a+') as f_output:
-        for line in uniqueLines:
-            f_output.write(','.join(line) + '\n')
+            tripId = line.split(',')[3]
+            if previousTripId != tripId:
+                coordinatesSet.append(coordinates.copy())
+                coordinates = []
+                previousTripId = tripId
+                index = 0
+            longitude = float(line.split(',')[0])
+            latitude = float(line.split(',')[1])
+            epochTime = float(line.split(',')[2])
+            coordinates.append({"coordinates": [latitude, longitude],
+                                "time": datetime.fromtimestamp(float(epochTime)).isoformat() + "Z"})
+            index += 1
+        coordinatesSet.append(coordinates.copy())
+        return coordinatesSet
 
 
 def createGeoJSON():
@@ -103,23 +79,27 @@ def createGeoJSON():
     according to a determined time
     :return:
     """
-    coordinates = retrieveCoordinates()
-    print(coordinates)
+    coordinatesSet = retrieveCoordinates()
 
-    feature_collection = {
-        "type": "FeatureCollection",
-        "features": [{
-            "type": "Feature",
-            "geometry": {
-                "type": "LineString",
-                "coordinates": [coord["coordinates"] for coord in coordinates]
-            },
-            "properties": {
-                "times": [coord["time"] for coord in coordinates]
-            }
-        }]
-    }
-    return feature_collection
+    for coordinates in coordinatesSet:
+        coordinates[0]['coordinates'] = coordinates[1]['coordinates']
+    geoJSONSet = []
+    for i in range(len(coordinatesSet)):
+        feature_collection = {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [coord["coordinates"] for coord in coordinatesSet[i]]
+                },
+                "properties": {
+                    "times": [coord["time"] for coord in coordinatesSet[i]]
+                }
+            }]
+        }
+        geoJSONSet.append(feature_collection.copy())
+    return geoJSONSet
 
 
 def findStationPositions():
@@ -207,26 +187,33 @@ def visualizeTrains():
     belgium_coords = [51.17147, 4.142963]
     m = folium.Map(location=belgium_coords, zoom_start=8)
 
-    feature_collection = createGeoJSON()
+    geoJSONSet = createGeoJSON()
 
     # Add the GeoJSON data to the map
-    TimestampedGeoJson(
-        json.dumps(feature_collection),
-        period="PT1S",  # update frequency in seconds
-        add_last_point=True,  # add a marker at the last point of the trajectory
-        auto_play=True,  # autoplay the animation
-        loop=True,  # loop the animation
-    ).add_to(m)
+    for feature_collection in geoJSONSet:
+        # create TimestampedGeoJson object for the current feature collection
+        geojson = TimestampedGeoJson(
+            json.dumps(feature_collection),
+            period="PT1S",  # update frequency in seconds
+            add_last_point=True,  # add a marker at the last point of the trajectory
+            auto_play=True,  # autoplay the animation
+            loop=True,  # loop the animation
+        )
+
+        # add the TimestampedGeoJson object to the map
+
+        geojson.add_to(m)
 
     # Show the map in PyCharm
     m.save("map.html")
     webbrowser.open('map.html')
 
 
-def writeMovingTrainsCoordinates(i, previousPosition, stations):
+def writeMovingTrainsCoordinates(i, previousPosition, stations, trip):
     """
     Function that writes in a file the positions of the train and the moments of the positions,
     when it is moving between stations
+    :param trip:
     :param i: instant at which the train is located on such coordinates
     :param previousPosition: the previous position of the train (will be needed later)
     :param stations: object containing details needed for the called functions, that will
@@ -236,22 +223,23 @@ def writeMovingTrainsCoordinates(i, previousPosition, stations):
     distanceStations = calculateDistance(stations)
     speed = calculateAverageSpeed(stations, distanceStations)
     position = [locateTrain(speed, stations, distanceStations, i)]
-    with open('unsortedTravels.txt', 'a+') as travels:
-        travels.write(f"{position[0][0]},{position[0][1]},{i}\n")
+    with open('travels.txt', 'a+') as travels:
+        travels.write(f"{position[0][0]},{position[0][1]},{i},{trip}\n")
         travels.close()
     return position
 
 
-def writeStaticTrainsCoordinates(i, previousPosition, stations):
+def writeStaticTrainsCoordinates(i, previousPosition, stations, trip):
     """
     Function writing coordinates of trains when they're stopped in stations.
+    :param trip:
     :param i: The current moment
     :param previousPosition: The previous position of the train (will be needed later)
     :param stations: The current position of the train
     :return: the actual position of the train
     """
-    with open('unsortedTravels.txt', 'a+') as travels:
-        travels.write(f"{stations[0][1]},{stations[0][2]},{i}\n")
+    with open('travels.txt', 'a+') as travels:
+        travels.write(f"{stations[0][1]},{stations[0][2]},{i},{trip}\n")
         travels.close()
     position = [stations[0][1], stations[0][2]]
     return position
@@ -270,11 +258,11 @@ class gtfsData:
         gtfsDict = preprocessing(url)
         self.gtfsValues = list(gtfsDict.values())[1]
         self.positionsDict = findStationPositions()
-
-        self.findTrainLocation()
+        for i in range(20):
+            self.findTrainLocation(i)
         visualizeTrains()
 
-    def findTrainLocation(self):
+    def findTrainLocation(self, trip):
         """
         Function that:
         First, we define an interval of time on which we will establish the positions of the train.
@@ -285,22 +273,19 @@ class gtfsData:
         Finally, we sort all of these coordinates, in function of the time.
         :return:
         """
-        startTime = self.findStartTime()
-        endTime = self.gtfsValues[5]['tripUpdate']['stopTimeUpdate'][-1]['arrival']['time']
+        startTime = self.findStartTime(trip)
+        endTime = self.gtfsValues[trip]['tripUpdate']['stopTimeUpdate'][-1]['arrival']['time']
         previousPosition = None
         previousTripId = None
         for i in range(startTime, int(endTime), 60):
-            stations, previousTripId = self.findStations(i, previousTripId)
-
+            stations, previousTripId = self.findStations(i, previousTripId, trip)
             if len(stations) == 1 and [stations[0][1], stations[0][2]] != previousPosition:
-                previousPosition = writeStaticTrainsCoordinates(i, previousPosition, stations)
+                previousPosition = writeStaticTrainsCoordinates(i, previousPosition, stations, trip)
 
             elif len(stations) > 1:
-                previousPosition = writeMovingTrainsCoordinates(i, previousPosition, stations)
+                previousPosition = writeMovingTrainsCoordinates(i, previousPosition, stations, trip)
 
-        writeSortedTravels()
-
-    def findStations(self, currentTime, previousTripId):
+    def findStations(self, currentTime, previousTripId, trip):
         """
         Function that retrieves all the stops of the train during the trip. Then, for each of these
         stops, we check if the current time is before or after the departure/arrival time.
@@ -308,17 +293,19 @@ class gtfsData:
         train is moving between 2 stations, so we return the time and the position of the 2 stations
         it is between. otherwise, it means it's stopped and we return the position of the station
         it's waiting at.
+        :param trip:
         :param currentTime: self-explanatory
         :param previousTripId: not used yet, but important later
         :return:
         """
-        stops = self.gtfsValues[5]['tripUpdate']['stopTimeUpdate']
+        stops = self.gtfsValues[trip]['tripUpdate']['stopTimeUpdate']
         for i in range(len(stops) - 1):
 
-            if self.gtfsValues[5]['tripUpdate']['trip']['tripId'] != previousTripId:
-                # not used yet but important later
-                previousTripId = self.gtfsValues[5]['tripUpdate']['trip']['tripId']
+            if self.gtfsValues[trip]['tripUpdate']['trip']['tripId'] != previousTripId:
+                previousTripId = self.gtfsValues[trip]['tripUpdate']['trip']['tripId']
 
+            if 'arrival' not in stops[i + 1]:
+                stops[i + 1]['arrival'] = {'delay': stops[i + 2]['departure']['delay'], 'time' : stops[i + 2]['departure']['time']}
             if int(stops[i]['departure']['time']) < currentTime < int(stops[i + 1]['arrival']['time']):
                 return [self.positionsDict[stops[i]['stopId']], self.positionsDict[stops[i + 1]['stopId']],
                         stops[i]['departure']['time'], stops[i + 1]['arrival']['time']], previousTripId
@@ -329,13 +316,13 @@ class gtfsData:
             else:
                 return [self.positionsDict[stops[i + 1]['stopId']]], previousTripId
 
-    def findStartTime(self):
+    def findStartTime(self, trip):
         """
         Function that finds the starting time of a trip.
         :return: the starting time under epoch format
         """
-        startTime = self.gtfsValues[5]['tripUpdate']['trip']['startTime']
-        startDate = self.gtfsValues[5]['tripUpdate']['trip']['startDate']
+        startTime = "21:00:00"
+        startDate = self.gtfsValues[trip]['tripUpdate']['trip']['startDate']
         startDateTime = datetime.strptime(startDate + startTime, '%Y%m%d%H:%M:%S')
         epochTime = int(startDateTime.timestamp())
         return epochTime
