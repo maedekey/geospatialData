@@ -7,10 +7,10 @@ from folium.plugins import TimestampedGeoJson
 from google.transit import gtfs_realtime_pb2
 import folium
 from google.protobuf.json_format import MessageToDict
+import extractPath
 
 
 # todo: try and make the whole gtfsrt file work with this visualization
-# todo: make a pin per train
 # todo: better path
 # todo: add delays
 # todo: parametrize paths of gtfs directory and gtfsrt file
@@ -258,7 +258,7 @@ class gtfsData:
         gtfsDict = preprocessing(url)
         self.gtfsValues = list(gtfsDict.values())[1]
         self.positionsDict = findStationPositions()
-        for i in range(20):
+        for i in range(2):
             self.findTrainLocation(i)
         visualizeTrains()
 
@@ -284,6 +284,8 @@ class gtfsData:
 
             elif len(stations) > 1:
                 previousPosition = writeMovingTrainsCoordinates(i, previousPosition, stations, trip)
+                print(stations)
+                print(len(stations))
 
     def findStations(self, currentTime, previousTripId, trip):
         """
