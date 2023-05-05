@@ -7,10 +7,11 @@ import os
 def retrieveTripCoordinates(stations, startTime, trip):
     graphPath = '/home/maedekey/PycharmProjects/pythonProject/railwayGraph.graphml'
     if os.path.exists(graphPath):
-        G = ox.load_graphml('/home/maedekey/PycharmProjects/pythonProject/railwayGraph.graphml')
+        G = ox.load_graphml(graphPath)
     else:
         place_name = "Belgium"
         G = ox.graph_from_place(place_name, custom_filter='["railway"]')
+        ox.save_graphml(G, graphPath)
 
     for station in stations:
         routeNodes = extractCoordinates(G, station)
