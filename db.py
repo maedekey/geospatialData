@@ -11,7 +11,7 @@ CREATE DATABASE traindb;
 GRANT ALL PRIVILEGES ON DATABASE traindb TO geoProject;
 """
 
-
+#todo: refaire la bdd en prenant en compte le departure time de chaque trajet
 def main():
     con, cur = connectToDB()
     createTable(cur)

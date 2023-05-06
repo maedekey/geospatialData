@@ -3,6 +3,8 @@ import os
 import webbrowser
 from datetime import datetime
 from urllib.request import urlopen
+
+import psycopg2
 from folium.plugins import TimestampedGeoJson
 from google.transit import gtfs_realtime_pb2
 import folium
@@ -10,9 +12,7 @@ from google.protobuf.json_format import MessageToDict
 import osm
 
 
-
 def preprocessing(url):
-    print("processing: ", url)
     """
     Allows to retrieve the gtfsrt file content and put it into a dictionary
     :param url: path of the file under the url format
@@ -22,8 +22,6 @@ def preprocessing(url):
     gtfs_realtime.ParseFromString(urlopen(url).read())
     dict_obj = MessageToDict(gtfs_realtime)
     return dict_obj
-
-
 
 
 def addLocations(stopId, line, positionsDict):
@@ -100,7 +98,6 @@ def createGeoJSON():
     #    coordinates[0]['coordinates'] = coordinates[1]['coordinates']
     geoJSONSet = []
     for i in range(len(coordinatesSet)):
-        print(coordinatesSet[i])
         feature_collection = {
             "type": "FeatureCollection",
             "features": [{
@@ -190,7 +187,7 @@ class gtfsData:
         gtfsDict = preprocessing(url)
         self.gtfsValues = list(gtfsDict.values())[1]
         self.positionsDict = findStationPositions()
-        for i in range(187,189):
+        for i in range(187, 189):
             self.findTrainLocation(i)
         visualizeTrains()
 
@@ -245,4 +242,67 @@ class gtfsData:
         epochTime = int(startDateTime.timestamp())
         return epochTime
 
-#gtfs = gtfsData()
+
+def retrieveInDb(station1, station2, epoch):
+    conn = psycopg2.connect(database="traindb", user="postgres", password="password", host="localhost", port="5432")
+    departureStation = retrieveDepartureStation(conn, station1, epoch)
+    arrivalStation = retrieveArrivalStation(conn, station2, epoch)
+    dict1 = {}
+    print('aux dicos')
+    for tuple1 in departureStation:
+        key = tuple1[-1]
+        if key in dict1:
+            dict1[key].append(tuple1)
+        else:
+            dict1[key] = [tuple1]
+
+    validDepartureStation = []
+    validArrivalStation = []
+
+    for tuple2 in arrivalStation:
+        key = tuple2[-1]
+        if key in dict1:
+            validDepartureStation.append(dict1[key])
+            validArrivalStation.append(tuple2)
+
+    print(validDepartureStation[0])
+    print(validArrivalStation[0])
+    print(len(arrivalStation))
+    #sortStations(departureStation, arrivalStation, epoch)
+    conn.close()
+
+
+def retrieveArrivalStation(conn, station, epoch):
+    cur = conn.cursor()
+    cur.execute("select * from station where nameStation = %s and arrivalTime < %s", (station, epoch,))
+    conn.commit()
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+def retrieveDepartureStation(conn, station, epoch):
+    cur = conn.cursor()
+    cur.execute("select * from station where nameStation = %s and arrivalTime > %s", (station, epoch,))
+    conn.commit()
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def sortStations(departureStation, arrivalStation, epoch):
+    validDepartureStations = []
+    validArrivalStations = []
+    for trip in departureStation:
+        if trip[4] < epoch:
+            validDepartureStations.append(trip)
+
+    for trip in arrivalStation:
+        if trip[4] > epoch:
+            validArrivalStations.append(trip)
+
+    print(validArrivalStations)
+    validArrivalStations = sorted(validArrivalStations, key=lambda x: x[5])
+    validDepartureStations = sorted(validDepartureStations, key=lambda x: x[5])
+
+
+
+retrieveInDb("Tournai", "Hal", 1679999880)
