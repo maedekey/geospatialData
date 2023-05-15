@@ -1,8 +1,6 @@
 import os
 import webbrowser
 
-from PyQt5 import QtWebEngineWidgets
-from PyQt5.QtWebEngineWidgets import QWebEngineView
 from dateutil.parser import parse
 from PyQt5.QtWidgets import QComboBox, QDateEdit, QApplication, QWidget, QPushButton, \
     QVBoxLayout, QLabel, QLineEdit, QTabWidget, QHBoxLayout, QGridLayout, QSpacerItem, QSizePolicy, \
