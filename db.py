@@ -52,6 +52,16 @@ def printTable(conn, cur):
 
 
 def loadGtfsData(cur, url, counter):
+    """
+    Function that loads the GTFSRT data into a database. We iterate through the GTFSRT dictionary, retrieve the
+    tripupdate field, iterate through it, find the station positions of each trip, then insert in a postgresql table
+    the station names, their location, the time at which the train arrived at this station, and the tripID, which allows
+    us to identify the stops belonging to a same trip (i.e. stops with the same tripId belong to the same trip).
+    :param cur:
+    :param url:
+    :param counter:
+    :return:
+    """
     positionsDict = common.findStationPositions()
     gtfsDict = common.preprocessing(url)
     if gtfsDict:
