@@ -3,30 +3,40 @@ import os
 import common
 
 """
-sudo -u postgres psql
-CREATE USER geoProject WITH PASSWORD 'geoProject';
-CREATE USER geoDataProject WITH PASSWORD 'password';
-
-CREATE DATABASE traindb;
-GRANT ALL PRIVILEGES ON DATABASE traindb TO geoProject;
+Run this program to initialize a table loaded with GTFSRT data. To use this code, you need to create a database called
+traindb, and set the user 'postgres' password to 'password'
 """
 
+
 def main():
+    """
+    Function to run to initialize the db, import gtfsrt data in it, and print the content of the table
+    :return:
+    """
     con, cur = connectToDB()
-    #createTable(cur)
-    #importGtfsData(cur)
+    createTable(cur)
+    importGTFSRTData(cur)
     printTable(con, cur)
     cur.close()
     con.close()
 
 
 def connectToDB():
+    """
+    Function that connects to the traindb database
+    :return: the connection and the cursor, used to make queries to the database
+    """
     conn = psycopg2.connect(database="traindb", user="postgres", password="password", host="localhost", port="5432")
     cur = conn.cursor()
     return conn, cur
 
 
 def createTable(cur):
+    """
+    Method that reinitializes and creates a table called 'station'
+    :param cur: the cursor needed to make the query
+    :return:
+    """
     cur.execute("DROP TABLE IF EXISTS station;")
     cur.execute('''CREATE TABLE station
                (id SERIAL PRIMARY KEY,
@@ -38,12 +48,24 @@ def createTable(cur):
 
 
 def insertInTable(cur, data):
+    """
+    Function that allows to insert a set of GTFSRT data into the table
+    :param cur: cursor needed to make the query
+    :param data: data to insert in the table
+    :return:
+    """
     cur.execute("INSERT INTO station (nameStation, latStation, longStation, arrivalTime, trip) VALUES (%s, %s, %s, "
                 "%s, %s)",
                 (data[0][0], float(data[0][1]), float(data[0][2]), int(data[1]), data[2]))
 
 
 def printTable(conn, cur):
+    """
+    Method that prints the content of the database
+    :param conn: connection to the database
+    :param cur: cursor needed to make queries to the database
+    :return:
+    """
     cur.execute("SELECT * FROM station")
     conn.commit()
     rows = cur.fetchall()
@@ -52,6 +74,16 @@ def printTable(conn, cur):
 
 
 def loadGtfsData(cur, url, counter):
+    """
+    Function that loads the GTFSRT data into a database. We iterate through the GTFSRT dictionary, retrieve the
+    tripupdate field, iterate through it, find the station positions of each trip, then insert in a postgresql table
+    the station names, their location, the time at which the train arrived at this station, and the tripID, which allows
+    us to identify the stops belonging to a same trip (i.e. stops with the same tripId belong to the same trip).
+    :param cur: cursor used to make db queries
+    :param url: gtfsrt data location under the url format
+    :param counter: number of the trip being processed, which allows us to identify trips
+    :return: counter
+    """
     positionsDict = common.findStationPositions()
     gtfsDict = common.preprocessing(url)
     if gtfsDict:
@@ -68,26 +100,42 @@ def loadGtfsData(cur, url, counter):
     return counter
 
 
-def importGtfsData(cur):
+def importGTFSRTData(cur):
+    """
+    Method that retrieves all the .GTFSRT files in the data directory and loads the gtfsrt data
+    :param cur: cursor used to make db queries
+    :return:
+    """
     dataPath = "data/"
     files = os.listdir(dataPath)
-    #todo : make for all the gtfsrt files
-    files = [files[0], files[1]]
+    # files = [files[0], files[1]]
     counter = 0
     for file in files:
         cwd = os.getcwd()
-        full_path = os.path.join(cwd, dataPath+file)
+        full_path = os.path.join(cwd, dataPath + file)
         url = 'file://' + full_path
         if url.endswith(".gtfsrt"):
-            counter = loadGtfsData(cur, url, counter)
+            try:
+                counter = loadGtfsData(cur, url, counter)
+            except:
+                print("Couldn't open file " + url)
 
 
-def findStations(gtfsValues, positionsDict, trip, counter):
+def findStations(gtfsrtValues, positionsDict, trip, counter):
+    """
+    Function that finds the corresponding coordinates and names of a stopID element in the gtsfrt data. Also fills the
+    gaps, if 'departure' and 'arrival' are non-existent for a stopID.
+    :param gtfsrtValues:
+    :param positionsDict: a dictionary containing stopID as a key, and a name and coordinates as a value
+    :param trip:
+    :param counter:
+    :return:
+    """
     res = []
-    stops = gtfsValues[trip]['tripUpdate']['stopTimeUpdate']
+    stops = gtfsrtValues[trip]['tripUpdate']['stopTimeUpdate']
     if len(stops) > 1:
         for i in range(len(stops)):
-            if i == len(stops)-1:
+            if i == len(stops) - 1:
                 res.append([positionsDict[stops[i]['stopId']],
                             stops[i]['arrival']['time'], counter])
 
@@ -102,10 +150,16 @@ def findStations(gtfsValues, positionsDict, trip, counter):
         return res
 
 
-#main()
+# main()
 
 
 def retrievePath(conn, trip):
+    """
+    Function that finds all the stops for a given tripID
+    :param conn: connection to the db
+    :param trip: tripID to identify the trip and its corresponding stations
+    :return: found stations having the asked tripID
+    """
     cur = conn.cursor()
     cur.execute("select * from station where trip = %s", (trip,))
     conn.commit()
@@ -115,6 +169,12 @@ def retrievePath(conn, trip):
 
 
 def retrieveStations(arrivalStation, departureStation):
+    """
+    Function that finds a common tripID for an arrival station and a destination station
+    :param arrivalStation: list of tuples of (arrivalStations, tripID) (only the tripID changes)
+    :param departureStation: list of tuples of (departureStations, tripID) (only the tripID changes)
+    :return: tuples with tripID in common
+    """
     stationDico = {}
     for station in departureStation:
         keyTrip = station[-1]
@@ -133,6 +193,13 @@ def retrieveStations(arrivalStation, departureStation):
 
 
 def retrieveArrivalStation(conn, station, epoch):
+    """
+    Function that retrieves a list of stations according to a name and a time
+    :param conn: the connection to the db
+    :param station: the name of the station asked
+    :param epoch: the epoch time
+    :return: the matching stations
+    """
     cur = conn.cursor()
     cur.execute("select * from station where nameStation = %s and arrivalTime > %s", (station, epoch,))
     conn.commit()
@@ -142,6 +209,13 @@ def retrieveArrivalStation(conn, station, epoch):
 
 
 def retrieveDepartureStation(conn, station, epoch):
+    """
+    Function that retrieves a list of stations according to a name and a time
+    :param conn: the connection to the db
+    :param station: the name of the station asked
+    :param epoch: the epoch time
+    :return: the matching stations
+    """
     cur = conn.cursor()
     cur.execute("select * from station where nameStation = %s and arrivalTime < %s", (station, epoch,))
     conn.commit()
@@ -150,4 +224,5 @@ def retrieveDepartureStation(conn, station, epoch):
     return rows
 
 
-main()
+if __name__ == '__main__':
+    main()

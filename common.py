@@ -1,5 +1,6 @@
 from urllib.request import urlopen
 
+# gtfs-realtime-bindings is the library to download
 from google.protobuf.json_format import MessageToDict
 from google.transit import gtfs_realtime_pb2
 
@@ -11,7 +12,6 @@ def findStationPositions():
     IMPORTANT: please change the path to the location of your gtfs/stops.txt file
     :return: the dictionary containing the stopID as the key and the rest of infos as values.
     """
-    # path = "C:/Users/maeva/Desktop/geo/gtfs/stops.txt"
     path = "data/gtfs/stops.txt"
 
     valuesSeen = set()
