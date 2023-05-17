@@ -17,13 +17,13 @@ You will need to put the gtfsrt data in a directory called 'data', in in the dir
 The file 'stops.txt' should have the path /data/gtfs/stops.txt
 """
 
-def setLayouts(departure, destination, page2):
+
+def setLayouts(self, departure, destination, page2):
     """
-    Method adding multiple qwidgets to the layout of pyqt
-    :param departure: qwidget holding the departure station name
-    :param destination: qwidget holding the destination station name
-    :param page2: qwidget holding the second page of the window
-    :return:
+    Add components to their respective layout
+         slayout1   A sub-layout used to display horizontally
+         slayout2   A sub-layout for the date input
+         layout2    Main layout
     """
     slayout1 = QHBoxLayout()
     slayout1.addWidget(page2.lab1, Qt.AlignLeft)
@@ -44,6 +44,8 @@ def setLayouts(departure, destination, page2):
     layout2.addWidget(page2.lab4, 5, 0)
     layout2.addWidget(destination, 6, 0)
     layout2.addWidget(page2.search, 7, 0)
+    layout2.addWidget(page2.mean, 8, 0)
+    layout2.addWidget(page2.stationList, 9, 0)
     verticalSpacer = QSpacerItem(40, 30, QSizePolicy.Minimum, QSizePolicy.Expanding)
     layout2.addItem(verticalSpacer, 7, 0, Qt.AlignTop)
     page2.setLayout(layout2)
