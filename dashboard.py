@@ -14,7 +14,7 @@ import visualization
 """
 To execute this code for the first time, please run db.py then dashboard.py
 You will need to put the gtfsrt data in a directory called 'data', in in the directory where you execute your program.
-The file 'stops.txt' should also be in the directory where you execute your program
+The file 'stops.txt' should have the path /data/gtfs/stops.txt
 """
 
 def setLayouts(departure, destination, page2):
@@ -71,17 +71,22 @@ def setScrollBox(page2, station_names):
     :param station_names: names of stations to add to the scrollbox
     :return:
     """
-    with open('stops.txt', 'r') as file:
+    with open('data/gtfs/stops.txt', 'r') as file:
         trips = file.readlines()[1:]
     departure = QComboBox(page2)
     destination = QComboBox(page2)
+    sortedList = []
     for line in trips:
         trip_list = line.split(',')
         trip = trip_list[2].split(' ')[0]
         if trip not in station_names:
-            station_names.add(trip)
-            departure.addItem(trip)
-            destination.addItem(trip)
+            sortedList.append(trip)
+    sortedList = sorted(list(set(sortedList)))
+
+    for trip in sortedList:
+        station_names.add(trip)
+        destination.addItem(trip)
+        departure.addItem(trip)
     return departure, destination
 
 
