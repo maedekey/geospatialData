@@ -4,7 +4,7 @@ import webbrowser
 from dateutil.parser import parse
 from PyQt5.QtWidgets import QComboBox, QDateEdit, QApplication, QWidget, QPushButton, \
     QVBoxLayout, QLabel, QLineEdit, QTabWidget, QHBoxLayout, QGridLayout, QSpacerItem, QSizePolicy, \
-    QMessageBox
+    QMessageBox, QPlainTextEdit
 from PyQt5.QtGui import QPalette, QColor
 from PyQt5.QtCore import QDate, Qt
 from datetime import datetime
@@ -179,6 +179,7 @@ class Fenetre(QWidget):
         self.departure, self.destination = setScrollBox(page2, station_names)
         setTime(page2)
         setLayouts(self.departure, self.destination, page2)
+        self.setStationsList(page2)
 
     def createTabs(self):
         """
@@ -191,7 +192,41 @@ class Fenetre(QWidget):
         page2.setStyleSheet("QComboBox {margin-bottom: 10px; padding: 5px}")
         page2.search = QPushButton("Search")
         page2.search.clicked.connect(self.retrieveTrip)
+        page2.search.setStyleSheet("QPushButton {margin-bottom:10px;padding:5px;text-align:center}")
+        page2.mean = QPushButton("Average delay for this line")
+        page2.mean.clicked.connect(self.showMeanDelay)
+        page2.mean.setStyleSheet("QPushButton {margin-bottom:25px;padding:5px;}")
+        page2.mean.setFixedWidth(300)
+        page2.search.setFixedWidth(300)
         return page2
+
+    def showStationsList(self, departureStation, arrivalStation):
+        """
+        Show a list of all stations between arrival and departure,
+        alongside with their arrival time and time delay
+        """
+        stationList = visualization.retrieveInDb(departureStation, arrivalStation, self.retrieveTime())
+
+        relevantStations = []
+        relevant = False
+        for station in stationList:
+            if station[1] == arrivalStation or station[1] == departureStation:
+                if self.retrieveTime() < int(station[4]):
+                    relevantStations.append(station)
+                relevant = not relevant
+            elif relevant:
+                if self.retrieveTime() < int(station[4]):
+                    relevantStations.append(station)
+
+        self.page2.stationList.clear()
+        self.page2.stationList.appendPlainText("[STATION]".ljust(20) + "   " + "[TIME]" + "     " + "[DELAY]")
+
+        for station in relevantStations:
+            arrTime = station[4] - station[6]
+            arrTime = datetime.fromtimestamp(float(arrTime)).strftime("%H:%M")
+            delay = int(station[6] / 60)
+            self.page2.stationList.appendPlainText(
+                station[1].ljust(20) + "   " + arrTime + "      +" + str(delay).ljust(2) + "min")
 
     def initWindow(self):
         """
@@ -221,6 +256,19 @@ class Fenetre(QWidget):
                 webbrowser.open(file)
             else:
                 showNoTripFound()
+        self.showStationsList(departureStation, arrivalStation)
+
+
+    def setStationsList(self, page2):
+        """
+        Create and display a list of stations
+        as a QPlainTextEdit widget on the board
+        """
+        page2.stationList = QPlainTextEdit()
+        page2.stationList.setReadOnly(True)
+        page2.stationList.setFixedHeight(200)
+        page2.stationList.setStyleSheet("QPlainTextEdit {color:#4400AA;font-family:monospace;}")
+
 
     def retrieveTime(self):
         """
@@ -236,6 +284,31 @@ class Fenetre(QWidget):
         time = datetime(dateObj.year, dateObj.month, dateObj.day, hours, minutes)
         epochTime = time.timestamp()
         return int(epochTime)
+
+    def showMeanDelay(self):
+        """
+        Display on the interface the average delay for each station
+        on a selected trip
+        """
+        today = parse(self.page2.date.date().toString())
+        epochMorning = int(datetime(today.year, today.month, today.day, 0, 0).timestamp())
+        epochEvening = int(datetime(today.year, today.month, today.day, 23, 59).timestamp())
+
+        departureStation = self.departure.currentText()
+        arrivalStation = self.destination.currentText()
+
+        if departureStation == arrivalStation:
+            self.showInvalidTrip()
+            return
+
+        means = visualization.meanDelays(departureStation, arrivalStation, self.retrieveTime(), epochMorning,
+                                         epochEvening)
+        self.page2.stationList.clear()
+        self.page2.stationList.appendPlainText("[STATION]".ljust(20) + "   " + "[MEAN DELAY]")
+
+        for row in means:
+            self.page2.stationList.appendPlainText(row[0].ljust(20) + "       " + str(row[1]) + " min")
+
 
 
 app = QApplication.instance()
